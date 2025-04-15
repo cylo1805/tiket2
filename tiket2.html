@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestor de Tickets</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    body {
+      padding: 20px;
+    }
+    .card {
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app"></div>
+
+  <!-- Firebase -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+    import { getFirestore, collection, addDoc, getDocs, query, where } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBTAJhS9EgnyHFdnTbsqbvS4_Z8uDvddE8",
+      authDomain: "tikets-2c852.firebaseapp.com",
+      projectId: "tikets-2c852",
+      storageBucket: "tikets-2c852.firebasestorage.app",
+      messagingSenderId: "49215543212",
+      appId: "1:49215543212:web:8250647646050f22378c09"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth();
+    const db = getFirestore();
+
+    const appDiv = document.getElementById('app');
+
+    function showLogin() {
+      appDiv.innerHTML = `
+        <div class="container">
+          <h2>Iniciar Sesión</h2>
+          <input type="email" id="email" class="form-control mb-2" placeholder="Email">
+          <input type="password" id="password" class="form-control mb-2" placeholder="Contraseña">
+          <button class="btn btn-primary" id="loginBtn">Iniciar Sesión</button>
+          <button class="btn btn-secondary" id="registerBtn">Registrarse</button>
+        </div>`;
+
+      document.getElementById('loginBtn').onclick = () => {
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        signInWithEmailAndPassword(auth, email, password)
+          .catch(error => Swal.fire('Error', error.message, 'error'));
+      };
+
+      document.getElementById('registerBtn').onclick = () => {
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        createUserWithEmailAndPassword(auth, email, password)
+          .catch(error => Swal.fire('Error', error.message, 'error'));
+      };
+    }
+
+    function showDashboard(user) {
+      appDiv.innerHTML = `
+        <div class="container">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2>Dashboard</h2>
+            <button class="btn btn-danger" id="logoutBtn">Cerrar sesión</button>
+          </div>
+          <button class="btn btn-success mb-3" id="newTicketBtn">Crear Nuevo Ticket</button>
+          <div id="ticketList" class="row"></div>
+        </div>`;
+
+      document.getElementById('logoutBtn').onclick = () => signOut(auth);
+      document.getElementById('newTicketBtn').onclick = showTicketForm;
+      loadTickets();
+    }
+
+    function showTicketForm() {
+      appDiv.innerHTML = `
+        <div class="container">
+          <h2>Nuevo Ticket</h2>
+          <input type="text" id="titulo" class="form-control mb-2" placeholder="Título">
+          <textarea id="descripcion" class="form-control mb-2" placeholder="Descripción"></textarea>
+          <select id="prioridad" class="form-control mb-2">
+            <option value="Alta">Alta</option>
+            <option value="Media">Media</option>
+            <option value="Baja">Baja</option>
+          </select>
+          <input type="text" id="tipo" class="form-control mb-2" placeholder="Tipo de pedido">
+          <button class="btn btn-primary" id="guardarTicket">Guardar Ticket</button>
+          <button class="btn btn-secondary" onclick="location.reload()">Cancelar</button>
+        </div>`;
+
+      document.getElementById('guardarTicket').onclick = async () => {
+        const titulo = document.getElementById('titulo').value;
+        const descripcion = document.getElementById('descripcion').value;
+        const prioridad = document.getElementById('prioridad').value;
+        const tipo = document.getElementById('tipo').value;
+        try {
+          await addDoc(collection(db, 'tickets'), {
+            titulo,
+            descripcion,
+            prioridad,
+            tipo,
+            estado: 'Pendiente',
+            fecha: new Date().toISOString()
+          });
+          Swal.fire('Éxito', 'Ticket creado', 'success').then(() => location.reload());
+        } catch (e) {
+          Swal.fire('Error', e.message, 'error');
+        }
+      };
+    }
+
+    async function loadTickets() {
+      const ticketsContainer = document.getElementById('ticketList');
+      ticketsContainer.innerHTML = '';
+      const querySnapshot = await getDocs(collection(db, 'tickets'));
+      querySnapshot.forEach(doc => {
+        const data = doc.data();
+        const card = document.createElement('div');
+        card.className = 'col-md-4';
+        card.innerHTML = `
+          <div class="card">
+            <div class="card-body">
+              <h5 class="card-title">${data.titulo}</h5>
+              <p class="card-text">${data.descripcion}</p>
+              <p class="card-text"><strong>Prioridad:</strong> ${data.prioridad}</p>
+              <p class="card-text"><strong>Estado:</strong> ${data.estado}</p>
+              <p class="card-text"><strong>Fecha:</strong> ${new Date(data.fecha).toLocaleString()}</p>
+            </div>
+          </div>`;
+        ticketsContainer.appendChild(card);
+      });
+    }
+
+    // Sesión automática con usuario demo
+    const demoEmail = 'demo@ticketapp.com';
+    const demoPass = 'demo1234';
+
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        showDashboard(user);
+      } else {
+        try {
+          await signInWithEmailAndPassword(auth, demoEmail, demoPass);
+        } catch (error) {
+          // Si no existe, lo crea automáticamente
+          try {
+            await createUserWithEmailAndPassword(auth, demoEmail, demoPass);
+          } catch (e) {
+            Swal.fire('Error', e.message, 'error');
+          }
+        }
+      }
+    });
+  </script>
+</body>
+
+</html>
