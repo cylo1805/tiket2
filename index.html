@@ -1,31 +1,33 @@
+<!-- Este archivo contiene TODO: HTML + CSS + JS + Firebase + Funciones -->
 <!DOCTYPE html>
 <html lang="es">
 
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Gestor de Tickets</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+  <!-- Bootstrap, FontAwesome, SweetAlert2, Chart.js, jsPDF -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet"/>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
   <style>
-    body {
-      padding: 20px;
-    }
-    .card {
-      margin-bottom: 1rem;
-    }
+    body { padding: 20px; }
+    .card { margin-bottom: 1rem; }
+    #statsChart { max-width: 600px; margin: auto; }
   </style>
 </head>
 
 <body>
   <div id="app"></div>
 
-  <!-- Firebase -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
     import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, getDocs, query, where } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBTAJhS9EgnyHFdnTbsqbvS4_Z8uDvddE8",
@@ -39,7 +41,6 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth();
     const db = getFirestore();
-
     const appDiv = document.getElementById('app');
 
     function showLogin() {
@@ -75,11 +76,14 @@
             <button class="btn btn-danger" id="logoutBtn">Cerrar sesión</button>
           </div>
           <button class="btn btn-success mb-3" id="newTicketBtn">Crear Nuevo Ticket</button>
+          <button class="btn btn-info mb-3" id="exportCSV">Exportar CSV</button>
+          <canvas id="statsChart" class="mb-4"></canvas>
           <div id="ticketList" class="row"></div>
         </div>`;
 
       document.getElementById('logoutBtn').onclick = () => signOut(auth);
       document.getElementById('newTicketBtn').onclick = showTicketForm;
+      document.getElementById('exportCSV').onclick = exportCSV;
       loadTickets();
     }
 
@@ -104,12 +108,14 @@
         const descripcion = document.getElementById('descripcion').value;
         const prioridad = document.getElementById('prioridad').value;
         const tipo = document.getElementById('tipo').value;
+        const folio = 'FOLIO-' + Math.floor(Math.random() * 1000000);
         try {
           await addDoc(collection(db, 'tickets'), {
             titulo,
             descripcion,
             prioridad,
             tipo,
+            folio,
             estado: 'Pendiente',
             fecha: new Date().toISOString()
           });
@@ -124,8 +130,12 @@
       const ticketsContainer = document.getElementById('ticketList');
       ticketsContainer.innerHTML = '';
       const querySnapshot = await getDocs(collection(db, 'tickets'));
+      const stats = { Alta: 0, Media: 0, Baja: 0 };
+      const allTickets = [];
       querySnapshot.forEach(doc => {
         const data = doc.data();
+        allTickets.push(data);
+        stats[data.prioridad]++;
         const card = document.createElement('div');
         card.className = 'col-md-4';
         card.innerHTML = `
@@ -134,15 +144,59 @@
               <h5 class="card-title">${data.titulo}</h5>
               <p class="card-text">${data.descripcion}</p>
               <p class="card-text"><strong>Prioridad:</strong> ${data.prioridad}</p>
-              <p class="card-text"><strong>Estado:</strong> ${data.estado}</p>
+              <p class="card-text"><strong>Tipo:</strong> ${data.tipo}</p>
+              <p class="card-text"><strong>Folio:</strong> ${data.folio}</p>
               <p class="card-text"><strong>Fecha:</strong> ${new Date(data.fecha).toLocaleString()}</p>
+              <button class="btn btn-outline-danger" onclick='exportPDF(${JSON.stringify(data)})'>Exportar PDF</button>
             </div>
           </div>`;
         ticketsContainer.appendChild(card);
       });
+      renderChart(stats);
+      window.allTickets = allTickets;
     }
 
-    // Sesión automática con usuario demo
+    function renderChart(stats) {
+      const ctx = document.getElementById('statsChart');
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Alta', 'Media', 'Baja'],
+          datasets: [{
+            label: 'Cantidad de Tickets',
+            data: [stats.Alta, stats.Media, stats.Baja],
+            backgroundColor: ['red', 'orange', 'green']
+          }]
+        }
+      });
+    }
+
+    function exportCSV() {
+      const headers = ['Folio', 'Titulo', 'Descripcion', 'Prioridad', 'Tipo', 'Fecha'];
+      const rows = window.allTickets.map(t => [t.folio, t.titulo, t.descripcion, t.prioridad, t.tipo, t.fecha]);
+      let csvContent = 'data:text/csv;charset=utf-8,' + [headers, ...rows].map(e => e.join(",")).join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "tickets.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    function exportPDF(data) {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.text(`Folio: ${data.folio}`, 10, 10);
+      doc.text(`Titulo: ${data.titulo}`, 10, 20);
+      doc.text(`Descripcion: ${data.descripcion}`, 10, 30);
+      doc.text(`Prioridad: ${data.prioridad}`, 10, 40);
+      doc.text(`Tipo: ${data.tipo}`, 10, 50);
+      doc.text(`Fecha: ${new Date(data.fecha).toLocaleString()}`, 10, 60);
+      doc.save(`${data.folio}.pdf`);
+    }
+
+    // Autenticación automática con usuario demo
     const demoEmail = 'demo@ticketapp.com';
     const demoPass = 'demo1234';
 
@@ -152,17 +206,11 @@
       } else {
         try {
           await signInWithEmailAndPassword(auth, demoEmail, demoPass);
-        } catch (error) {
-          // Si no existe, lo crea automáticamente
-          try {
-            await createUserWithEmailAndPassword(auth, demoEmail, demoPass);
-          } catch (e) {
-            Swal.fire('Error', e.message, 'error');
-          }
+        } catch {
+          await createUserWithEmailAndPassword(auth, demoEmail, demoPass);
         }
       }
     });
   </script>
 </body>
-
 </html>
